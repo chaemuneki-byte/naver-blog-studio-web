@@ -1,0 +1,4 @@
+export const terminal = status => ['published','typed','stopped','error'].includes(status);
+export function isStudioUrl(value){try{const u=new URL(value);return u.origin==='https://chaemuneki-byte.github.io'&&u.pathname.startsWith('/naver-blog-studio-web/');}catch{return false;}}
+export function isPostUrl(value,blogId){try{const u=new URL(value);return u.protocol==='https:'&&u.hostname==='blog.naver.com'&&(new RegExp('^/'+blogId+'/[0-9]+/?$').test(u.pathname)||(u.pathname==='/PostView.naver'&&u.searchParams.get('blogId')===blogId&&/^[0-9]+$/.test(u.searchParams.get('logNo')||'')));}catch{return false;}}
+export async function fingerprint(blogId,post){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(blogId+'\n'+JSON.stringify(post)));return 'post:'+Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');}

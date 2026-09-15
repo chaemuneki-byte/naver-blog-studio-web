@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.openai.com; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>블로그 스튜디오 · 키워드에서 포스팅까지</title><meta name="description" content="키워드와 글자 수로 완성하는 네이버 블로그 포스팅. 글 생성, 순차 입력, 자동 발행을 웹에서 관리하세요.">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css"><script src="./app.js" type="module"></script></head>
+<body>
+<aside class="sidebar"><a class="brand" href="./"><span class="brand-mark">b.</span><span>블로그<br><b>스튜디오</b></span></a>
+<div class="sidebar-label">WORKSPACE</div><button class="nav active" id="write-nav"><span>▤</span> 새 포스팅</button><button class="nav" id="settings-nav"><span>⚙</span> 연결 설정</button><button class="nav" id="help-nav"><span>?</span> 사용 가이드</button>
+<div class="sidebar-bottom"><span class="mini-dot"></span> WEB EDITION <a href="https://github.com/chaemuneki-byte/naver-blog-studio-web" target="_blank" rel="noopener">GitHub ↗</a></div></aside>
+<div class="workspace"><header class="topbar"><span>내 작업 공간 <span class="slash">/</span> <b>새 포스팅</b></span><button class="connection-pill" id="connection"><i></i><span>브라우저 연결 확인</span></button></header>
+<main><div class="page-heading"><div><div class="eyebrow">WRITE SOMETHING WORTH READING</div><h1>오늘은 어떤 이야기를 써볼까요?</h1><p>키워드 하나로 시작해, 나만의 포스팅으로 완성하세요.</p></div><span class="web-badge">웹 스튜디오 <span>1.0</span></span></div>
+<div class="studio-grid"><section class="composer card"><div class="card-title"><span class="step">01</span><h2>포스팅 설정</h2></div>
+<label for="keyword">핵심 키워드 <span class="required">*</span></label><input id="keyword" maxlength="60" placeholder="예: 네이버 블로그 글쓰기" autocomplete="off">
+<label for="target">목표 글자 수</label><div class="number-wrap"><input id="target" type="number" min="500" max="10000" step="100" value="1500"><span>자</span></div>
+<div class="presets"><button data-target="1000">1,000자</button><button class="selected" data-target="1500">1,500자</button><button data-target="2000">2,000자</button><button data-target="3000">3,000자</button></div>
+<p class="field-hint">소제목·공백 포함, 제목·줄바꿈 제외 · 목표 ±5%</p>
+<label for="facts">참고 내용 <span class="optional">선택</span></label><textarea id="facts" rows="5" maxlength="20000" placeholder="직접 경험한 내용이나 꼭 넣고 싶은 정보를 적어주세요."></textarea>
+<div class="structure-note"><span>≡</span><div><b>읽기 좋은 글의 흐름</b><p>도입 → 소제목과 200~300자 내용 → 마무리</p></div></div>
+<label class="toggle-row" for="auto"><span><b>생성 후 자동 발행</b><small>연결된 네이버 편집기로 이어서 발행</small></span><input id="auto" type="checkbox" role="switch"><span class="switch" aria-hidden="true"></span></label>
+<button class="primary main-action" id="generate"><span>✦</span><span id="generate-label">포스팅 생성하기</span><span class="arrow">→</span></button>
+<button class="text-button" id="demo">먼저 예시 원고 둘러보기</button><p class="api-note">글 생성에는 OpenAI API 키가 필요합니다.</p></section>
+<section class="preview card"><div class="card-title preview-title"><div><span class="step">02</span><h2>원고 미리보기</h2></div><span id="draft-badge" class="draft-badge">작성 대기</span></div>
+<div id="empty" class="empty"><div class="paper-illustration"><span></span><span></span><span></span><span></span><b>✦</b></div><h3>첫 문장은 키워드에서 시작됩니다</h3><p>왼쪽에서 주제와 분량을 정하면<br>이곳에 제목과 본문이 완성돼요.</p><div class="empty-chips"><span>키워드를 담은 제목</span><span>자연스러운 문장</span><span>짧고 명확한 소제목</span></div></div>
+<div id="article" hidden><label class="sr-only" for="title">포스팅 제목</label><textarea id="title" rows="2" maxlength="100" placeholder="제목"></textarea><div id="sections"></div></div>
+<div class="preview-footer"><div><b id="total">0</b> <span>자</span><span class="divider">|</span><span id="section-total">소제목 0개</span></div><div><button id="download" class="icon-button" disabled>↓ TXT 저장</button><button id="copy" class="icon-button" disabled>복사</button></div></div>
+<div id="validation" class="validation" aria-live="polite"></div>
+</section></div>
+<section class="workflow card"><div class="workflow-left"><span class="status-orb" id="status-orb"></span><div><b id="status" role="status" aria-live="polite">새 포스팅을 준비하고 있어요</b><p id="status-detail">연결 설정을 완료하면 네이버 입력과 발행까지 진행할 수 있어요.</p></div></div><div class="workflow-actions"><button class="secondary" id="stop" disabled>중지</button><button class="secondary" id="type" disabled>네이버에 입력만</button><button class="primary" id="publish" disabled>네이버에 발행 ↗</button></div><progress id="progress" value="0" max="100" hidden></progress></section>
+<div class="footnote">소제목별 분량을 자동 검사하고, 발행 전 입력된 원고를 한 번 더 대조합니다.<span>네이버 비공식 도구</span></div>
+</main></div>
+<dialog id="settings"><form method="dialog" class="dialog-head"><div><span class="eyebrow">CONNECT YOUR WORKSPACE</span><h2>연결 설정</h2></div><button aria-label="닫기" value="cancel">×</button></form>
+<div class="dialog-body"><label for="api-key">OpenAI API 키</label><input id="api-key" type="password" autocomplete="off" placeholder="sk-…"><p class="field-hint">이 탭의 메모리에만 보관합니다. API 사용료는 별도이며 입력 내용은 OpenAI로 전송됩니다.</p>
+<div class="two-col"><div><label for="model">생성 모델</label><input id="model" value="gpt-4.1-mini"></div><div><label for="speed">초당 입력 글자 수</label><input id="speed" type="number" min="1" max="80" value="18"></div></div>
+<label for="blog-id">내 네이버 블로그 ID</label><input id="blog-id" placeholder="blog.naver.com/ 뒤의 본인 ID" autocomplete="off">
+<div class="extension-box"><b>네이버 연결 확장</b><span id="extension-status">연결 확인 중</span><p>Chrome 또는 Edge에 한 번 설치하면 이 웹사이트에서 로그인된 네이버 편집기를 제어할 수 있습니다.</p><a class="secondary" href="./naver-blog-connector.zip" download>연결 확장 다운로드 ↓</a><button id="show-install" class="text-button" type="button">설치 방법 보기</button></div>
+<p class="field-hint">블로그 ID·속도·모델만 이 브라우저에 저장합니다. 네이버 비밀번호를 받거나 전송하지 않습니다.</p></div>
+<div class="dialog-foot"><button id="open-naver" class="secondary">네이버 편집기 열기 ↗</button><button id="save-settings" class="primary">설정 적용</button></div></dialog>
+<dialog id="guide"><form method="dialog" class="dialog-head"><h2>처음 사용하시나요?</h2><button aria-label="닫기">×</button></form><div class="dialog-body guide-body">
+<h3>1. 글 생성 설정</h3><p>연결 설정에 본인의 OpenAI API 키를 입력하세요. API 키는 새로고침하면 지워집니다. 참고 내용에는 확인된 사실이나 실제 경험을 적어 주세요. URL 본문을 가져오는 기능은 없습니다.</p>
+<h3>2. 네이버 연결 확장 설치</h3><ol><li><a href="./naver-blog-connector.zip" download>연결 확장 ZIP</a>을 내려받아 압축을 풉니다.</li><li>Chrome의 <code>chrome://extensions</code> 또는 Edge의 <code>edge://extensions</code>를 엽니다.</li><li><b>개발자 모드</b>를 켜고 <b>압축해제된 확장 프로그램을 로드합니다</b>를 누릅니다.</li><li><code>manifest.json</code>이 있는 폴더를 선택하고 이 웹페이지를 새로고침합니다.</li></ol>
+<h3>3. 원고 생성과 발행</h3><p>블로그 ID를 설정하고 네이버에 로그인하세요. 키워드와 분량을 입력해 글을 만듭니다. ‘생성 후 자동 발행’을 켜면 생성부터 발행까지 이어집니다. 타이핑하는 동안 네이버 탭을 앞에 두고 편집기를 건드리지 마세요.</p>
+<h3>분량과 발행 설정</h3><p>전체 500~10,000자, 목표의 ±5% 범위로 생성합니다. 소제목 아래 내용은 각각 200~300자입니다. 소제목은 번호와 줄바꿈으로 구분합니다. 이미지는 포함하지 않습니다. 발행에는 네이버에 현재 선택된 공개 범위와 카테고리를 사용합니다.</p>
+<h3>중지와 결과 확인</h3><p>중지는 아직 전송하지 않은 입력을 멈춥니다. 최종 발행 버튼을 누른 뒤에는 이미 게시되었을 수 있습니다. 결과 미확인 상태에서는 자동 재발행하지 않습니다. 네이버에서 직접 확인하세요.</p>
+<h3>현재 검증 범위</h3><p>웹 화면·글자 수 검사·모의 네이버 편집기 흐름을 검증했습니다. 실제 API 키와 로그인된 네이버에서의 발행은 미검증입니다. 네이버 편집기가 변경되면 확장의 선택자를 수정해야 할 수 있습니다.</p>
+<a href="https://github.com/chaemuneki-byte/naver-blog-studio-web" target="_blank" rel="noopener">소스 코드와 상세 설명 ↗</a></div></dialog>
+<template id="section-template"><section class="article-section"><div class="section-meta"><span class="section-index"></span><span class="section-count"></span></div><label class="sr-only">소제목</label><input class="section-heading" maxlength="60"><label class="sr-only">내용</label><textarea class="section-content" rows="5"></textarea></section></template>
+</body></html>

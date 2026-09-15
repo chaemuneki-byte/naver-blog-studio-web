@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "블로그 스튜디오 · 네이버 연결",
+  "version": "1.0.0",
+  "description": "블로그 스튜디오 웹앱에서 요청한 원고를 네이버 블로그 편집기에 입력하고 발행합니다.",
+  "minimum_chrome_version": "120",
+  "permissions": ["scripting", "storage"],
+  "host_permissions": ["https://blog.naver.com/*"],
+  "background": {"service_worker":"background.js","type":"module"},
+  "content_scripts": [
+    {"matches":["https://chaemuneki-byte.github.io/naver-blog-studio-web/*"],"js":["bridge.js"],"run_at":"document_start"},
+    {"matches":["https://blog.naver.com/*"],"js":["naver.js"],"all_frames":true,"run_at":"document_idle"}
+  ],
+  "action": {"default_title":"블로그 스튜디오 열기"}
+}
