@@ -1,0 +1,8 @@
+.git
+node_modules
+data
+.env
+tests
+extension
+docs/naver-blog-connector.zip
+**/__pycache__

@@ -1,0 +1,6 @@
+{$STUDIO_DOMAIN} {
+    request_body {
+        max_size 100KB
+    }
+    reverse_proxy studio:8000
+}

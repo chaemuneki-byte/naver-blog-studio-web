@@ -1,21 +1,23 @@
+import {RemoteBrowser} from './remote.js';
 import {bodyText, clean, count, generate, normalizePost, validate} from './core.js';
 const $ = id => document.getElementById(id);
-let post = null, meta = null, example = false, busy = false, controller = null, connected = false, extensionJob = null;
-const pending = new Map();
+let post = null, meta = null, example = false, busy = false, controller = null, connected = false, serverJob = null;
+const remote=new RemoteBrowser(value=>{connected=value;updateConnection();updateStats();});
 const settingsFields = ['blog-id','model','speed'];
 try { const saved=JSON.parse(localStorage.getItem('blog-studio-settings')||'{}'); for(const id of settingsFields) if(saved[id]) $(id).value=saved[id]; } catch {}
-window.addEventListener('message', event => {
-  if(event.source !== window || event.origin !== location.origin || event.data?.channel !== 'BLOG_STUDIO_RESPONSE') return;
-  const entry = pending.get(event.data.id);
-  if(entry) { clearTimeout(entry.timer); pending.delete(event.data.id); event.data.ok ? entry.resolve(event.data.result) : entry.reject(new Error(event.data.error || '브라우저 연결 요청에 실패했습니다.')); }
-});
-function bridge(type, payload={}, timeout=5000) {
-  return new Promise((resolve,reject)=>{
-    const id=crypto.randomUUID();
-    const timer=setTimeout(()=>{pending.delete(id);reject(new Error('네이버 연결 확장을 설치하고 이 페이지를 새로고침해 주세요.'));},timeout);
-    pending.set(id,{resolve,reject,timer});
-    window.postMessage({channel:'BLOG_STUDIO_REQUEST', id, type, payload},location.origin);
-  });
+async function bridge(type,payload={}) {
+  if(type==='PING'){await remote.ready();return {ok:true};}
+  if(type==='START')return remote.request('jobs',{method:'POST',body:payload,timeout:20000});
+  if(type==='STATUS')return remote.request(`jobs/${encodeURIComponent(payload.id)}`);
+  if(type==='STOP')return remote.request(`jobs/${encodeURIComponent(payload.id)}/stop`,{method:'POST'});
+  throw new Error('지원하지 않는 작업입니다.');
+}
+function updateConnection(){
+  $('connection').classList.toggle('connected',connected);
+  $('connection').querySelector('span').textContent=connected?'네이버 연결됨':remote.available?'네이버 연결':'원고 작성 모드';
+  $('auto').disabled=busy||!connected;
+  if(!connected){$('auto').checked=false;$('generate-label').textContent='원고 만들기';}
+  $('auto-hint').textContent=connected?'원고 완성 후 네이버에 바로 발행':'네이버 연결 후 사용할 수 있어요';
 }
 function status(text, detail='', error=false) {
   $('status').textContent=text; $('status-detail').textContent=detail;
@@ -29,11 +31,12 @@ function setBusy(value) {
   $('status-orb').classList.toggle('busy',value);
   $('progress').hidden=!value;
   updateStats();
+  updateConnection();
 }
 function config() {
   const blogId=$('blog-id').value.trim(), speed=Number($('speed').value);
   if(!/^[A-Za-z0-9_-]{1,64}$/.test(blogId)) throw new Error('연결 설정에 본인의 블로그 ID를 입력해 주세요.');
-  if(!Number.isFinite(speed)||speed<1||speed>80) throw new Error('입력 속도는 초당 1~80자로 설정해 주세요.');
+  if(!Number.isInteger(speed)||speed<1||speed>80) throw new Error('입력 속도는 초당 1~80자의 정수로 설정해 주세요.');
   return {blogId,speed};
 }
 function updateStats() {
@@ -43,7 +46,7 @@ function updateStats() {
   $('validation').textContent=post?(errors.length?errors.join(' '):'✓ 목표 분량과 소제목별 200~300자 조건을 충족했습니다.') : '';
   $('validation').classList.toggle('ok',!errors.length);
   for(const id of ['download','copy']) $(id).disabled=!post;
-  for(const id of ['type','publish']) $(id).disabled=!post||busy||example||!!errors.length;
+  for(const id of ['type','publish']) $(id).disabled=!post||busy||example||!connected||!!errors.length;
   document.querySelectorAll('.article-section').forEach((el,i)=>{
     const n=count(post.sections[i].content); const label=el.querySelector('.section-count');label.textContent=`${n} / 200~300자`;label.classList.toggle('bad',n<200||n>300);
   });
@@ -67,10 +70,13 @@ function render() {
   updateStats();
 }
 async function probe() {
-  try {await bridge('PING',{},1800);connected=true;} catch {connected=false;}
-  $('connection').classList.toggle('connected',connected);
-  $('connection').querySelector('span').textContent=connected?'네이버 연결 준비됨':'네이버 연결 필요';
-  $('extension-status').textContent=connected?'✓ 연결됨':'설치 후 새로고침';
+  await remote.config();
+  $('server-notice').hidden=remote.available;
+  $('access-fields').hidden=!remote.available;
+  $('open-naver').disabled=!remote.available;
+  $('server-description').textContent=remote.available?'설치 없이 이 웹 안에서 네이버에 로그인하세요. 연결 종료 시 서버의 로그인 세션이 삭제됩니다.':'자동 발행 서버가 아직 연결되지 않았습니다. 현재는 원고 생성·수정·복사를 사용할 수 있습니다.';
+  try{await remote.ready();connected=true;}catch{connected=false;}
+  updateConnection();updateStats();
 }
 async function ensureBridge() {await bridge('PING',{},1800);connected=true;}
 async function sendToNaver(publish) {
@@ -79,66 +85,83 @@ async function sendToNaver(publish) {
   if(errors.length) throw new Error(errors.join(' '));
   const connection=config();
   await ensureBridge();
+  controller?.signal.throwIfAborted();
   const result=await bridge('START',{...connection,post:candidate,keyword:meta.keyword,target:meta.target,publish},15000);
-  extensionJob=result.id;setBusy(true);
-  status('네이버 편집기를 연결하고 있어요','로그인이 필요하면 새 네이버 탭에서 직접 로그인하세요.');
+  serverJob=result.id;setBusy(true);
+  if(controller?.signal.aborted){await bridge('STOP',{id:serverJob});return;}
+  status('네이버 편집기를 연결하고 있어요','연결 화면에서 서버 브라우저의 입력 과정을 볼 수 있습니다.');
 }
 $('generate').addEventListener('click',async()=>{
   if(busy) return;
   const keyword=clean($('keyword').value), target=Number($('target').value), auto=$('auto').checked;
   try {
     setBusy(true);
+    controller=new AbortController();
     if(auto){config();await ensureBridge();}
+    controller.signal.throwIfAborted();
     if(!$('api-key').value.trim()){$('settings').showModal();throw new Error('OpenAI API 키를 입력한 뒤 다시 생성해 주세요.');}
-    controller=new AbortController();$('progress').value=5;
+    $('progress').value=5;
     const result=await generate({key:$('api-key').value,model:$('model').value.trim(),keyword,target,facts:$('facts').value,
       signal:controller.signal,onProgress:message=>status(message,'조건에 맞는 자연스러운 원고를 작성하고 있어요.')});
     post=result;meta={keyword,target};example=false;render();$('progress').value=100;
     status('원고가 완성됐어요',`${count(bodyText(post)).toLocaleString()}자 · 내용을 수정하거나 네이버에 입력할 수 있어요.`);
     if(auto){controller.signal.throwIfAborted();await sendToNaver(true);}
   } catch(error){status(error.name==='AbortError'?'글 생성을 중지했어요':'작업을 완료하지 못했어요',error.message,error.name!=='AbortError');}
-  finally {controller=null;if(!extensionJob)setBusy(false);}
+  finally {controller=null;if(!serverJob)setBusy(false);}
 });
 $('title').addEventListener('input',()=>{if(post){post.title=$('title').value;updateStats();}});
 for(const [id,publish] of [['type',false],['publish',true]]) $(id).addEventListener('click',async()=>{
   if(busy)return;setBusy(true);
+  controller=new AbortController();
   try {await sendToNaver(publish);}catch(error){status('네이버 연결을 확인해 주세요',error.message,true);setBusy(false);}
+  finally{controller=null;}
 });
 $('stop').addEventListener('click',async()=>{
   controller?.abort();
-  if(extensionJob) try {await bridge('STOP',{id:extensionJob});status('중지를 요청했어요','발행 요청이 이미 전송됐다면 블로그에서 게시 여부를 확인해 주세요.');} catch(error){status('중지 상태를 확인할 수 없어요',error.message,true);}
+  if(serverJob) try {await bridge('STOP',{id:serverJob});status('중지를 요청했어요','발행 요청이 이미 전송됐다면 블로그에서 게시 여부를 확인해 주세요.');} catch(error){status('중지 상태를 확인할 수 없어요',error.message,true);}
 });
+let pollingJob=false;
 setInterval(async()=>{
-  if(!extensionJob) return;
+  if(!serverJob||pollingJob) return;
+  pollingJob=true;
   try {
-    const job=await bridge('STATUS',{id:extensionJob});
+    const job=await bridge('STATUS',{id:serverJob});
     if(!job)throw new Error('연결 작업 기록이 없습니다. 네이버에서 게시 여부를 확인해 주세요.');
-    $('progress').value=job.progress||0;status(job.message,job.detail||'',job.status==='error');
-    if(['published','typed','error','stopped'].includes(job.status)){
-      extensionJob=null;setBusy(false);
-      if(job.url){const a=document.createElement('a');a.href=job.url;a.target='_blank';a.rel='noopener';a.textContent='발행된 글 확인 ↗';$('status-detail').replaceChildren(a);}
+    $('progress').value=job.progress||0;status(job.message,job.detail||'',['error','unknown'].includes(job.status));
+    if(['published','typed','error','stopped','unknown'].includes(job.status)){
+      serverJob=null;setBusy(false);
+      if(job.url && /^https:\/\/blog\.naver\.com\//.test(job.url)){const a=document.createElement('a');a.href=job.url;a.target='_blank';a.rel='noopener';a.textContent='발행된 글 확인 ↗';$('status-detail').replaceChildren(a);}
     }
-  }catch(error){extensionJob=null;setBusy(false);status('연결이 끊어졌어요',`${error.message} 작업이 진행 중일 수 있으니 네이버를 확인해 주세요.`,true);}
+  }catch(error){status('작업 상태를 다시 확인하고 있어요',`${error.message} 서버 작업은 계속될 수 있습니다.`,true);if(!remote.token){serverJob=null;setBusy(false);}}finally{pollingJob=false;}
 },1800);
 for(const id of ['settings-nav','connection']) $(id).addEventListener('click',()=>{$('settings').showModal();probe();});
 $('help-nav').addEventListener('click',()=>$('guide').showModal());
 $('write-nav').addEventListener('click',()=>{$('keyword').focus();window.scrollTo({top:0,behavior:'smooth'});});
-$('show-install').addEventListener('click',()=>{$('settings').close();$('guide').showModal();});
+$('server-info').addEventListener('click',()=>$('guide').showModal());
 $('save-settings').addEventListener('click',()=>{
   try {
-    const speed=Number($('speed').value);if(speed<1||speed>80||!Number.isFinite(speed))throw new Error('입력 속도는 1~80자로 설정해 주세요.');
+    const speed=Number($('speed').value);if(speed<1||speed>80||!Number.isInteger(speed))throw new Error('입력 속도는 1~80자의 정수로 설정해 주세요.');
     localStorage.setItem('blog-studio-settings',JSON.stringify(Object.fromEntries(settingsFields.map(id=>[id,$(id).value.trim()]))));
     $('settings').close();status('설정을 적용했어요','API 키는 이 탭을 닫거나 새로고침하면 지워집니다.');probe();
   }catch(error){status('설정을 저장하지 못했어요',error.message,true);}
 });
 $('open-naver').addEventListener('click',async()=>{
-  try {const connection=config();await ensureBridge();await bridge('OPEN',connection);status('네이버 편집기를 열었어요','네이버에 로그인하고 빈 편집기를 준비하세요.');} catch(error){status('네이버 연결을 확인해 주세요',error.message,true);}
+  $('open-naver').disabled=true;
+  try {
+    await remote.open($('access-code').value);$('access-code').value='';
+    $('settings').close();$('remote').showModal();await remote.refresh();
+    status('네이버 로그인 화면을 열었어요','로그인 후 ‘글쓰기 열기’를 눌러 주세요.');
+  }catch(error){$('server-description').textContent=error.message;status('네이버 연결을 확인해 주세요',error.message,true);}
+  finally{$('open-naver').disabled=!remote.available;}
 });
+remote.bind({config,report:status});
+window.addEventListener('beforeunload',event=>{if(busy){event.preventDefault();event.returnValue='';}});
+
 document.querySelectorAll('[data-target]').forEach(button=>button.addEventListener('click',()=>{
   $('target').value=button.dataset.target;document.querySelectorAll('[data-target]').forEach(el=>el.classList.toggle('selected',el===button));
 }));
 $('target').addEventListener('input',()=>document.querySelectorAll('[data-target]').forEach(el=>el.classList.toggle('selected',el.dataset.target===$('target').value)));
-$('auto').addEventListener('change',()=>{$('generate-label').textContent=$('auto').checked?'생성하고 자동 발행':'포스팅 생성하기';});
+$('auto').addEventListener('change',()=>{$('generate-label').textContent=$('auto').checked?'생성하고 자동 발행':'원고 만들기';});
 $('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(`${post.title}\n\n${bodyText(post)}`);status('원고를 복사했어요');}catch{status('복사 권한을 확인해 주세요','TXT 저장으로 원고를 내려받을 수 있어요.',true);}});
 $('download').addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([`${post.title}\n\n${bodyText(post)}`],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`${post.title.replace(/[<>:"/\\|?*]/g,'_')}.txt`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
 $('demo').addEventListener('click',()=>{

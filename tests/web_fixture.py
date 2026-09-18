@@ -29,7 +29,10 @@ class WebFixture(unittest.TestCase):
             page.wait_for_function("document.querySelector('#draft-badge').textContent==='작성 완료'")
             self.assertEqual(len(requests),1)
             self.assertEqual(page.locator('#title').input_value(),post['title'])
-            self.assertTrue(page.locator('#publish').is_enabled())
+            # GitHub Pages has no browser server: never pretend publishing is available.
+            self.assertFalse(page.locator('#publish').is_enabled())
+            self.assertTrue(page.locator('#server-notice').is_visible())
+            self.assertFalse(page.locator('#auto').is_enabled())
             page.locator('.section-content').first.fill('짧음')
             self.assertFalse(page.locator('#publish').is_enabled())
             self.assertIn('200~300',page.locator('#validation').inner_text())

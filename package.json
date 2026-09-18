@@ -1,4 +1,11 @@
 {
-  "name": "naver-blog-studio-web", "version": "1.0.0", "private": true, "type": "module",
-  "scripts": {"test": "node --test tests/*.test.js", "serve": "node scripts/serve.js", "package-extension": "python scripts/package-extension.py"}
+  "name": "naver-blog-studio-web",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "node scripts/serve.js",
+    "package-extension": "python scripts/package-extension.py"
+  }
 }

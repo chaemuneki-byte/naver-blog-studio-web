@@ -1,0 +1,35 @@
+services:
+  studio:
+    build: .
+    init: true
+    restart: unless-stopped
+    shm_size: 1gb
+    security_opt:
+      - seccomp=./server/seccomp_profile.json
+    environment:
+      PUBLIC_ORIGIN: https://${STUDIO_DOMAIN:?Set STUDIO_DOMAIN}
+      STUDIO_ACCESS_CODE: ${STUDIO_ACCESS_CODE:?Set a random access code of at least 24 characters}
+    volumes:
+      - studio_data:/app/data
+    networks:
+      - studio
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      STUDIO_DOMAIN: ${STUDIO_DOMAIN:?Set STUDIO_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - studio
+networks:
+  studio:
+volumes:
+  studio_data:
+  caddy_data:
+  caddy_config:
